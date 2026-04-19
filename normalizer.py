@@ -2,11 +2,15 @@
 
 import re
 
+# The complete set of Conventional Commits type tokens.  Any type not in this
+# set is remapped to "chore" during normalization.
 VALID_TYPES = {
     "feat", "fix", "docs", "style", "refactor", "perf",
     "test", "build", "ci", "chore", "revert",
 }
 
+# Regex that parses a Conventional Commits header line into its named groups:
+# type, optional scope, optional breaking-change marker (!), and description.
 HEADER_RE = re.compile(
     r"^(?P<type>[a-zA-Z]+)"
     r"(?:\((?P<scope>[^)]*)\))?"
@@ -14,6 +18,8 @@ HEADER_RE = re.compile(
     r":\s*(?P<description>.+)$"
 )
 
+# Maximum allowed length (characters) for the normalized subject line,
+# matching the 72-character convention widely used by git tooling.
 MAX_SUBJECT_LEN = 72
 
 
@@ -88,6 +94,18 @@ def _is_footer_paragraph(para):
 
 
 def _normalize_header(header: str) -> str:
+    """Parse and normalize a single Conventional Commits header line.
+
+    Steps performed:
+    1. Attempt to match the header against HEADER_RE.  If the match fails the
+       entire header is treated as a plain description and wrapped as
+       ``chore: <description>``.
+    2. The commit type is lowercased.  If it is not in VALID_TYPES it is
+       replaced with ``chore``.
+    3. Trailing periods are stripped from the description.
+    4. The breaking-change marker (``!``) is preserved when present.
+    5. The final subject line is truncated to MAX_SUBJECT_LEN characters.
+    """
     m = HEADER_RE.match(header)
     if not m:
         # Cannot parse - wrap as chore

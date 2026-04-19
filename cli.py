@@ -1,4 +1,12 @@
-"""CLI entry point for commit message normalizer."""
+"""CLI entry point for the commit message normalizer.
+
+Two operating modes:
+
+- Positional message: accepts a raw commit message string as a command-line
+  argument, normalizes it, and prints the result to stdout.
+- File mode (-f / --file): reads a commit message file, normalizes it, and
+  rewrites the file in place.  Intended for use as a git commit-msg hook.
+"""
 
 import argparse
 import sys
