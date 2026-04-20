@@ -86,3 +86,28 @@ def test_multiline_message_preserved():
     result = run(msg)
     assert result.returncode == 0
     assert "This is the body text." in result.stdout
+
+
+def test_stdin_normalizes_message():
+    result = run("--file", "-", input_text="Feat: Add something.")
+    assert result.returncode == 0
+    assert result.stdout.strip() == "feat: add something"
+
+
+def test_stdin_short_flag():
+    result = run("-f", "-", input_text="FIX: Bug fixed.")
+    assert result.returncode == 0
+    assert result.stdout.strip() == "fix: bug fixed"
+
+
+def test_stdin_empty_exits_nonzero():
+    result = run("--file", "-", input_text="   ")
+    assert result.returncode != 0
+
+
+def test_stdin_multiline():
+    msg = "feat: Add feature\n\nBody text here."
+    result = run("--file", "-", input_text=msg)
+    assert result.returncode == 0
+    assert result.stdout.startswith("feat: add feature")
+    assert "Body text here." in result.stdout

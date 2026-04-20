@@ -92,6 +92,8 @@ def _normalize_header(header: str) -> str:
     if not m:
         # Cannot parse - wrap as chore
         description = header.rstrip(".")
+        if description:
+            description = description[0].lower() + description[1:]
         description = _truncate(description)
         return f"chore: {description}"
 
@@ -111,6 +113,10 @@ def _normalize_header(header: str) -> str:
 
     # Strip trailing period from description
     description = description.rstrip(".")
+
+    # Lowercase first character of description
+    if description:
+        description = description[0].lower() + description[1:]
 
     # Build subject line and truncate
     scope_str = f"({scope})" if scope else ""

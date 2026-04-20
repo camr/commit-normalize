@@ -26,6 +26,16 @@ def main():
     args = parser.parse_args()
 
     if args.file:
+        if args.file == "-":
+            raw = sys.stdin.read()
+            try:
+                result = normalize(raw)
+            except ValueError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                sys.exit(1)
+            print(result)
+            return
+
         try:
             with open(args.file, "r", encoding="utf-8") as fh:
                 raw = fh.read()

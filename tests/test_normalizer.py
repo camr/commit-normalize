@@ -123,3 +123,23 @@ def test_body_content_not_lost():
     msg = "chore: update deps\n\nBumped requests from 2.28 to 2.31."
     result = normalize(msg)
     assert "Bumped requests" in result
+
+
+def test_description_first_char_lowercased():
+    assert normalize("feat: Add new feature") == "feat: add new feature"
+
+
+def test_description_first_char_lowercased_with_scope():
+    assert normalize("fix(auth): Correct token expiry") == "fix(auth): correct token expiry"
+
+
+def test_description_already_lowercase_unchanged():
+    assert normalize("feat: add new feature") == "feat: add new feature"
+
+
+def test_description_first_char_lowercased_fallback_chore():
+    assert normalize("Some random change") == "chore: some random change"
+
+
+def test_description_first_char_lowercased_unknown_type():
+    assert normalize("random: Something happened") == "chore: something happened"
