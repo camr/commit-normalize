@@ -112,11 +112,16 @@ def test_footer_separated_from_body():
 
 
 def test_last_body_paragraph_type_style_not_footer():
-    # A paragraph that looks like "fix: something" should be body, not footer
+    # A paragraph that looks like "fix: something" should be body, not footer.
+    # Verify by checking structural position: body appears right after the
+    # header blank line with no additional blank line introducing a footer section.
     msg = "feat: new thing\n\nfix: this is actually body prose"
     result = normalize(msg)
-    # Should preserve it as body
-    assert "fix: this is actually body prose" in result
+    lines = result.splitlines()
+    assert lines[0] == "feat: new thing"
+    assert lines[1] == ""
+    assert lines[2] == "fix: this is actually body prose"
+    assert len(lines) == 3
 
 
 def test_body_content_not_lost():
@@ -143,3 +148,12 @@ def test_description_first_char_lowercased_fallback_chore():
 
 def test_description_first_char_lowercased_unknown_type():
     assert normalize("random: Something happened") == "chore: something happened"
+
+
+def test_fallback_chore_subject_within_72_chars():
+    # Unparseable header longer than 72 chars must still produce a <= 72-char subject.
+    # "chore: " is 7 chars, so description must be capped at 65 chars.
+    long_header = "a" * 80
+    result = normalize(long_header)
+    assert result.startswith("chore: ")
+    assert len(result) <= 72

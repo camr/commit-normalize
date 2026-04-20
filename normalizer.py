@@ -79,12 +79,20 @@ def _split_paragraphs(lines):
 
 _TRAILER_RE = re.compile(r"^[\w-]+(?:\s[\w-]+)*\s*:(?:\s|$)|^[\w-]+\s#")
 
+# Lines that start with a conventional commit type should not be treated as trailers
+_COMMIT_TYPE_RE = re.compile(
+    r"^(?:feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\([^)]*\))?!?:\s"
+)
+
 
 def _is_footer_paragraph(para):
     """Return True only if every line in para looks like a git trailer."""
     if not para:
         return False
-    return all(_TRAILER_RE.match(line) for line in para)
+    return all(
+        _TRAILER_RE.match(line) and not _COMMIT_TYPE_RE.match(line)
+        for line in para
+    )
 
 
 def _normalize_header(header: str) -> str:
@@ -94,7 +102,7 @@ def _normalize_header(header: str) -> str:
         description = header.rstrip(".")
         if description:
             description = description[0].lower() + description[1:]
-        description = _truncate(description)
+        description = _truncate_description("chore: ", description)
         return f"chore: {description}"
 
     commit_type = m.group("type").lower()
