@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-from normalizer import normalize
+from normalizer import load_config, normalize
 
 
 def main():
@@ -22,8 +22,20 @@ def main():
         metavar="FILE",
         help="path to commit message file (git commit-msg hook usage); rewrites file in place",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="report violations without modifying the file; exits non-zero if the message "
+             "would be changed (requires --file)",
+    )
 
     args = parser.parse_args()
+
+    if args.check and not args.file:
+        print("error: --check requires --file", file=sys.stderr)
+        sys.exit(1)
+
+    config = load_config()
 
     if args.file:
         try:
@@ -34,10 +46,17 @@ def main():
             sys.exit(1)
 
         try:
-            result = normalize(raw)
+            result = normalize(raw, config=config)
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             sys.exit(1)
+
+        if args.check:
+            if result.strip() != raw.strip():
+                print("commit message requires normalization:", file=sys.stderr)
+                _report_diff(raw.strip(), result.strip())
+                sys.exit(1)
+            return
 
         try:
             with open(args.file, "w", encoding="utf-8") as fh:
@@ -53,12 +72,20 @@ def main():
         sys.exit(1)
 
     try:
-        result = normalize(args.message)
+        result = normalize(args.message, config=config)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
 
     print(result)
+
+
+def _report_diff(original: str, normalized: str):
+    """Print a simple before/after view to stderr."""
+    for line in original.splitlines():
+        print(f"  - {line}", file=sys.stderr)
+    for line in normalized.splitlines():
+        print(f"  + {line}", file=sys.stderr)
 
 
 if __name__ == "__main__":

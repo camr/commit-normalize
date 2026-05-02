@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "capitalize_subject": true,
+    "strip_trailing_period": true,
+    "normalize_type": true,
+    "max_subject_length": 72
+  }
+}
