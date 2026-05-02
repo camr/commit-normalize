@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# commit-msg hook: normalize commit message in place.
+# Install: cp hooks/commit-msg .git/hooks/commit-msg && chmod +x .git/hooks/commit-msg
+exec python3 "$(git rev-parse --show-toplevel)/cli.py" -f "$1"
