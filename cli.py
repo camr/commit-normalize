@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-from normalizer import normalize
+from normalizer import normalize, load_config
 
 
 def main():
@@ -22,8 +22,21 @@ def main():
         metavar="FILE",
         help="path to commit message file (git commit-msg hook usage); rewrites file in place",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="report violations without modifying; exits 1 if changes would be made",
+    )
+    parser.add_argument(
+        "--config",
+        metavar="FILE",
+        default=None,
+        help="path to commit-normalize.json (default: ./commit-normalize.json)",
+    )
 
     args = parser.parse_args()
+
+    config = load_config(args.config)
 
     if args.file:
         try:
@@ -34,10 +47,17 @@ def main():
             sys.exit(1)
 
         try:
-            result = normalize(raw)
+            result = normalize(raw, config)
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             sys.exit(1)
+
+        if args.check:
+            if raw.rstrip("\n") != result:
+                print("commit message requires normalization:", file=sys.stderr)
+                print(result, file=sys.stderr)
+                sys.exit(1)
+            return
 
         try:
             with open(args.file, "w", encoding="utf-8") as fh:
@@ -53,10 +73,17 @@ def main():
         sys.exit(1)
 
     try:
-        result = normalize(args.message)
+        result = normalize(args.message, config)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
+
+    if args.check:
+        if args.message.rstrip("\n") != result:
+            print("commit message requires normalization:", file=sys.stderr)
+            print(result, file=sys.stderr)
+            sys.exit(1)
+        return
 
     print(result)
 

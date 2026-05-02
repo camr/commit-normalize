@@ -1,0 +1,6 @@
+{
+  "capitalize_subject": false,
+  "strip_trailing_period": true,
+  "max_subject_length": 72,
+  "normalize_type": true
+}

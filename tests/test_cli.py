@@ -86,3 +86,36 @@ def test_multiline_message_preserved():
     result = run(msg)
     assert result.returncode == 0
     assert "This is the body text." in result.stdout
+
+
+# --check mode tests
+
+def test_check_mode_clean_message_exits_zero():
+    # An already-normalized message should exit 0 with --check
+    result = run("--check", "feat: add login page")
+    assert result.returncode == 0
+
+
+def test_check_mode_dirty_message_exits_nonzero():
+    # A message that needs normalization should exit 1 with --check
+    result = run("--check", "FIX: correct typo.")
+    assert result.returncode == 1
+    # Should print what the normalized form would be
+    assert "fix: correct typo" in result.stderr
+
+
+def test_check_mode_does_not_modify_file():
+    # --check with --file must NOT write back to the file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as fh:
+        fh.write("FIX: bad message.\n")
+        path = fh.name
+
+    try:
+        result = run("--check", "--file", path)
+        assert result.returncode == 1
+        # File must be unchanged
+        with open(path) as fh:
+            content = fh.read()
+        assert content == "FIX: bad message.\n"
+    finally:
+        os.unlink(path)

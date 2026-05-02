@@ -1,7 +1,7 @@
 """Unit tests for normalizer.py."""
 
 import pytest
-from normalizer import normalize
+from normalizer import normalize, load_config
 
 
 def test_passthrough_valid_message():
@@ -112,14 +112,49 @@ def test_footer_separated_from_body():
 
 
 def test_last_body_paragraph_type_style_not_footer():
-    # A paragraph that looks like "fix: something" should be body, not footer
+    # A paragraph that looks like "fix: something" should be body, not footer,
+    # meaning it must appear at index 2 (after subject and blank line), not
+    # re-ordered to the footer position.
     msg = "feat: new thing\n\nfix: this is actually body prose"
     result = normalize(msg)
-    # Should preserve it as body
-    assert "fix: this is actually body prose" in result
+    lines = result.splitlines()
+    # Subject at index 0, blank separator at index 1, body line at index 2
+    assert lines[0] == "feat: new thing"
+    assert lines[1] == ""
+    assert lines[2] == "fix: this is actually body prose"
 
 
 def test_body_content_not_lost():
     msg = "chore: update deps\n\nBumped requests from 2.28 to 2.31."
     result = normalize(msg)
     assert "Bumped requests" in result
+
+
+# capitalize_subject rule tests
+
+def test_capitalize_subject_disabled_by_default():
+    # Without an explicit config, capitalize_subject defaults to False
+    result = normalize("feat: add login page")
+    assert result == "feat: add login page"
+
+
+def test_capitalize_subject_enabled():
+    config = {"capitalize_subject": True, "strip_trailing_period": True,
+               "max_subject_length": 72, "normalize_type": True}
+    result = normalize("feat: add login page", config=config)
+    assert result == "feat: Add login page"
+
+
+def test_capitalize_subject_already_capitalized():
+    config = {"capitalize_subject": True, "strip_trailing_period": True,
+               "max_subject_length": 72, "normalize_type": True}
+    result = normalize("fix: Correct the typo", config=config)
+    assert result == "fix: Correct the typo"
+
+
+def test_capitalize_subject_after_type_normalization():
+    # Type is lowercased, then description is capitalized
+    config = {"capitalize_subject": True, "strip_trailing_period": True,
+               "max_subject_length": 72, "normalize_type": True}
+    result = normalize("FIX: resolve crash on startup", config=config)
+    assert result == "fix: Resolve crash on startup"
