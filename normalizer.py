@@ -9,6 +9,17 @@ VALID_TYPES = {
     "test", "build", "ci", "chore", "revert",
 }
 
+TYPE_ALIASES = {
+    "feature": "feat",
+    "bugfix": "fix",
+    "hotfix": "fix",
+    "documentation": "docs",
+    "refactoring": "refactor",
+    "performance": "perf",
+    "testing": "test",
+    "infrastructure": "ci",
+}
+
 HEADER_RE = re.compile(
     r"^(?P<type>[a-zA-Z]+)"
     r"(?:\((?P<scope>[^)]*)\))?"
@@ -143,8 +154,10 @@ def _normalize_header(header: str, config: dict) -> str:
     breaking = m.group("breaking") or ""
     description = m.group("description").strip()
 
-    if config.get("normalize_type", True) and commit_type not in VALID_TYPES:
-        commit_type = "chore"
+    if config.get("normalize_type", True):
+        commit_type = TYPE_ALIASES.get(commit_type, commit_type)
+        if commit_type not in VALID_TYPES:
+            commit_type = "chore"
 
     # Normalize scope whitespace; discard whitespace-only scopes
     if scope is not None:
