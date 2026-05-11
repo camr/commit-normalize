@@ -158,3 +158,41 @@ def test_capitalize_subject_after_type_normalization():
                "max_subject_length": 72, "normalize_type": True}
     result = normalize("FIX: resolve crash on startup", config=config)
     assert result == "fix: Resolve crash on startup"
+
+
+# TYPE_ALIASES tests
+
+def test_alias_feature_maps_to_feat():
+    assert normalize("feature: add login page") == "feat: add login page"
+
+
+def test_alias_bugfix_maps_to_fix():
+    assert normalize("bugfix: correct nil pointer") == "fix: correct nil pointer"
+
+
+def test_alias_hotfix_maps_to_fix():
+    assert normalize("hotfix: patch memory leak") == "fix: patch memory leak"
+
+
+def test_alias_documentation_maps_to_docs():
+    assert normalize("documentation: update README") == "docs: update README"
+
+
+def test_alias_refactoring_maps_to_refactor():
+    assert normalize("refactoring: extract helper") == "refactor: extract helper"
+
+
+def test_alias_performance_maps_to_perf():
+    assert normalize("performance: cache query results") == "perf: cache query results"
+
+
+def test_alias_testing_maps_to_test():
+    assert normalize("testing: add unit tests") == "test: add unit tests"
+
+
+def test_alias_infrastructure_maps_to_ci():
+    assert normalize("infrastructure: add github actions") == "ci: add github actions"
+
+
+def test_unknown_type_still_falls_back_to_chore():
+    assert normalize("random: some change") == "chore: some change"

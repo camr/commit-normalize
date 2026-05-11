@@ -105,6 +105,14 @@ The push is rejected if any commit fails validation, printing the offending comm
 | `feat(   ): login` | `feat: login` |
 | Subject > 72 chars | Truncated at 72, trailing period stripped |
 | Plain sentence | Wrapped as `chore: <sentence>` |
+| `feature: add thing` | `feat: add thing` |
+| `bugfix: fix crash` | `fix: fix crash` |
+| `hotfix: patch leak` | `fix: patch leak` |
+| `documentation: update README` | `docs: update README` |
+| `refactoring: extract helper` | `refactor: extract helper` |
+| `performance: cache results` | `perf: cache results` |
+| `testing: add unit tests` | `test: add unit tests` |
+| `infrastructure: add CI` | `ci: add CI` |
 
 ## Development
 
