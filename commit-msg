@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# commit-msg hook: normalize commit message in place.
+# Install: cp commit-msg .git/hooks/commit-msg && chmod +x .git/hooks/commit-msg
+
+set -euo pipefail
+
+COMMIT_MSG_FILE="$1"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+python3 "$REPO_ROOT/normalize_commit.py" --in-place "$COMMIT_MSG_FILE"
