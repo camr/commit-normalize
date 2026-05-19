@@ -1,0 +1,205 @@
+#!/bin/sh
+# commit-msg hook: normalize commit messages to Conventional Commits format.
+#
+# Rules enforced:
+#   1. Type prefix must be one of: feat fix docs chore refactor test style perf ci
+#   2. Type is lowercased
+#   3. Subject first word is capitalized
+#   4. No trailing period on subject line
+#   5. Subject line max 72 characters
+#   6. Blank line between subject and body when body is present
+#
+# Usage: invoked automatically by git as .git/hooks/commit-msg <msg-file>
+#        or manually: sh scripts/commit-msg <msg-file>
+
+set -e
+
+COMMIT_MSG_FILE="$1"
+
+if [ -z "$COMMIT_MSG_FILE" ]; then
+    printf 'usage: commit-msg <commit-msg-file>\n' >&2
+    exit 1
+fi
+
+if [ ! -f "$COMMIT_MSG_FILE" ]; then
+    printf 'commit-msg: file not found: %s\n' "$COMMIT_MSG_FILE" >&2
+    exit 1
+fi
+
+VALID_TYPES="feat fix docs chore refactor test style perf ci"
+SUBJECT_MAX=72
+
+# ---------------------------------------------------------------------------
+# Helper: capitalize the first character of a string
+# ---------------------------------------------------------------------------
+capitalize_first() {
+    input="$1"
+    if [ -z "$input" ]; then
+        printf '%s' "$input"
+        return
+    fi
+    first=$(printf '%s' "$input" | cut -c1 | tr '[:lower:]' '[:upper:]')
+    rest=$(printf '%s' "$input" | cut -c2-)
+    printf '%s%s' "$first" "$rest"
+}
+
+# ---------------------------------------------------------------------------
+# Helper: guess a type from the description when none is present
+# ---------------------------------------------------------------------------
+guess_type() {
+    desc_lower=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    case "$desc_lower" in
+        fix*|bug*|patch*|resolve*)           printf 'fix' ;;
+        add*|new*|implement*|create*)        printf 'feat' ;;
+        feat*)                               printf 'feat' ;;
+        doc*|readme*|comment*|*readme*)      printf 'docs' ;;
+        refactor*|clean*|restructure*|move*|rename*) printf 'refactor' ;;
+        test*|spec*)                         printf 'test' ;;
+        style*|format*|lint*)                printf 'style' ;;
+        perf*|optim*|speed*)                 printf 'perf' ;;
+        ci*|pipeline*|deploy*|workflow*)     printf 'ci' ;;
+        *)                                   printf 'chore' ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# Helper: check if a type is in the valid list
+# ---------------------------------------------------------------------------
+is_valid_type() {
+    typ="$1"
+    for t in $VALID_TYPES; do
+        if [ "$t" = "$typ" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# Helper: parse conventional commit subject using awk
+# Sets global-style variables via output parsing
+# Output format: TYPE|SCOPE|BREAKING|DESC  or  BARE|DESC
+# ---------------------------------------------------------------------------
+parse_subject() {
+    printf '%s' "$1" | awk '
+    {
+        line = $0
+        # Try to match: type(scope)!: desc  or  type!: desc
+        # type = one or more alpha chars
+        # scope = optional (...)
+        # breaking = optional !
+        if (match(line, /^[a-zA-Z]+(\([^)]*\))?!?: .+/)) {
+            # Extract type
+            typ = line
+            sub(/[^a-zA-Z].*/, "", typ)
+            rest = substr(line, length(typ)+1)
+
+            # Extract scope
+            scope = ""
+            if (substr(rest,1,1) == "(") {
+                close_p = index(rest, ")")
+                if (close_p > 0) {
+                    scope = substr(rest, 2, close_p-2)
+                    rest = substr(rest, close_p+1)
+                }
+            }
+
+            # Extract breaking
+            breaking = ""
+            if (substr(rest,1,1) == "!") {
+                breaking = "!"
+                rest = substr(rest, 2)
+            }
+
+            # Expect ": "
+            if (substr(rest,1,2) == ": ") {
+                desc = substr(rest, 3)
+                printf "CONV|%s|%s|%s|%s\n", typ, scope, breaking, desc
+                exit
+            }
+        }
+        # No match - bare subject
+        printf "BARE|%s\n", line
+    }'
+}
+
+# ---------------------------------------------------------------------------
+# Read the commit message, stripping comment lines (lines starting with #)
+# ---------------------------------------------------------------------------
+raw_msg=$(grep -v '^#' "$COMMIT_MSG_FILE" || true)
+
+# Extract subject (first non-blank line)
+subject=$(printf '%s\n' "$raw_msg" | awk 'NF{print; exit}')
+
+# Extract body: everything after the first non-blank line
+body=$(printf '%s\n' "$raw_msg" | awk '
+    NR==1 { next }
+    found_content { print; next }
+    NF { found_content=1; print; next }
+')
+# Trim leading blank lines from body
+body=$(printf '%s\n' "$body" | awk 'found_content || NF { found_content=1; print }')
+
+if [ -z "$subject" ]; then
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Parse and normalize the subject line
+# ---------------------------------------------------------------------------
+parsed=$(parse_subject "$subject")
+parse_kind=$(printf '%s' "$parsed" | cut -d'|' -f1)
+
+if [ "$parse_kind" = "CONV" ]; then
+    type_part=$(printf '%s' "$parsed" | cut -d'|' -f2)
+    scope_part=$(printf '%s' "$parsed" | cut -d'|' -f3)
+    breaking_part=$(printf '%s' "$parsed" | cut -d'|' -f4)
+    desc_part=$(printf '%s' "$parsed" | cut -d'|' -f5)
+
+    typ=$(printf '%s' "$type_part" | tr '[:upper:]' '[:lower:]')
+    if ! is_valid_type "$typ"; then
+        typ=$(guess_type "$desc_part")
+    fi
+
+    desc=$(capitalize_first "$desc_part")
+    case "$desc" in
+        *...) ;;
+        *.)   desc="${desc%?}" ;;
+    esac
+
+    if [ -n "$scope_part" ]; then
+        normalized_subject="${typ}(${scope_part})${breaking_part}: ${desc}"
+    else
+        normalized_subject="${typ}${breaking_part}: ${desc}"
+    fi
+else
+    # Bare subject - infer type
+    bare=$(printf '%s' "$parsed" | cut -d'|' -f2-)
+    desc=$(capitalize_first "$bare")
+    case "$desc" in
+        *...) ;;
+        *.)   desc="${desc%?}" ;;
+    esac
+    typ=$(guess_type "$desc")
+    normalized_subject="${typ}: ${desc}"
+fi
+
+# ---------------------------------------------------------------------------
+# Trim subject to max length
+# ---------------------------------------------------------------------------
+subject_len=${#normalized_subject}
+if [ "$subject_len" -gt "$SUBJECT_MAX" ]; then
+    printf 'warning: subject line truncated to %d characters\n' "$SUBJECT_MAX" >&2
+    normalized_subject=$(printf '%s' "$normalized_subject" | cut -c1-${SUBJECT_MAX})
+fi
+
+# ---------------------------------------------------------------------------
+# Reassemble message
+# ---------------------------------------------------------------------------
+if [ -n "$body" ]; then
+    printf '%s\n\n%s\n' "$normalized_subject" "$body" > "$COMMIT_MSG_FILE"
+else
+    printf '%s\n' "$normalized_subject" > "$COMMIT_MSG_FILE"
+fi
+
+exit 0
