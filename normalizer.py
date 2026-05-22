@@ -17,7 +17,7 @@ HEADER_RE = re.compile(
 )
 
 # Git trailer line: token: value  (RFC 2822-style)
-TRAILER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9-]*: .+$")
+TRAILER_RE = re.compile(r"^(?:[A-Za-z][A-Za-z0-9-]*|BREAKING CHANGE): .+$")
 
 MERGE_RE = re.compile(r"^Merge ", re.IGNORECASE)
 

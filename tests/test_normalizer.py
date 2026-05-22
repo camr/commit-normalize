@@ -145,6 +145,21 @@ def test_trailer_not_modified():
     assert "Co-authored-by: Bob <bob@example.com>" in result
 
 
+def test_breaking_change_space_token_in_footer():
+    msg = "feat!: remove v1 endpoint\n\nBREAKING CHANGE: removes the /v1/users endpoint entirely"
+    result = normalize(msg)
+    assert "BREAKING CHANGE: removes the /v1/users endpoint entirely" in result
+
+
+def test_breaking_change_space_token_not_treated_as_body():
+    msg = "fix: patch endpoint\n\nBREAKING CHANGE: old param removed"
+    result = normalize(msg)
+    lines = result.splitlines()
+    # The BREAKING CHANGE line should appear after the blank separator line
+    assert lines[0] == "fix: patch endpoint"
+    assert "BREAKING CHANGE: old param removed" in result
+
+
 # --- Empty message raises ValueError ---
 
 def test_empty_message_raises():
