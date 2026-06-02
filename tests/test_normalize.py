@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from normalize import normalize, _normalize_subject, _wrap_body
+from normalize import normalize, _normalize_subject, _wrap_body, _strip_comments
 
 # ---------------------------------------------------------------------------
 # Subject: capitalization
@@ -197,3 +197,118 @@ def test_cli_stdin_mode():
     )
     assert proc.returncode == 0
     assert proc.stdout.startswith("feat: Add gadget")
+
+
+# ---------------------------------------------------------------------------
+# Comment stripping
+# ---------------------------------------------------------------------------
+
+def test_strip_comments_removes_comment_lines():
+    msg = "feat: add thing\n# Please enter the commit message\n# Changes:\nbody text\n"
+    result = normalize(msg)
+    assert "# Please" not in result
+    assert "# Changes" not in result
+    assert "body text" in result
+
+
+def test_strip_comments_subject_only_with_trailing_comments():
+    msg = "feat: add thing\n# Everything below will be ignored\n"
+    result = normalize(msg)
+    assert result == "feat: Add thing"
+
+
+def test_strip_comments_body_with_comment_lines():
+    msg = "feat: add thing\n\nBody line.\n# git comment\nMore body.\n"
+    result = normalize(msg)
+    assert "# git comment" not in result
+    assert "Body line." in result
+    assert "More body." in result
+
+
+def test_strip_comments_subject_not_affected():
+    # The subject line itself does not start with '#' so should be untouched.
+    msg = "feat: Add thing\n"
+    result = normalize(msg)
+    assert result == "feat: Add thing"
+
+
+# ---------------------------------------------------------------------------
+# --check mode (CLI)
+# ---------------------------------------------------------------------------
+
+def test_check_mode_exits_0_for_clean_message(tmp_path):
+    commit_file = tmp_path / "COMMIT_EDITMSG"
+    commit_file.write_text("feat: Add widget\n")
+    proc = subprocess.run(
+        [sys.executable, "normalize.py", "--check", str(commit_file)],
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert proc.returncode == 0
+    # File must not be modified
+    assert commit_file.read_text() == "feat: Add widget\n"
+
+
+def test_check_mode_exits_1_for_unnormalized_message(tmp_path):
+    commit_file = tmp_path / "COMMIT_EDITMSG"
+    original = "feat: add widget.\n"
+    commit_file.write_text(original)
+    proc = subprocess.run(
+        [sys.executable, "normalize.py", "--check", str(commit_file)],
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert proc.returncode == 1
+    # File must not be modified
+    assert commit_file.read_text() == original
+
+
+def test_check_mode_does_not_modify_file(tmp_path):
+    commit_file = tmp_path / "COMMIT_EDITMSG"
+    original = "feat: add widget.\n"
+    commit_file.write_text(original)
+    subprocess.run(
+        [sys.executable, "normalize.py", "--check", str(commit_file)],
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert commit_file.read_text() == original
+
+
+# ---------------------------------------------------------------------------
+# Type validation warnings
+# ---------------------------------------------------------------------------
+
+def test_unknown_type_emits_warning_to_stderr():
+    proc = subprocess.run(
+        [sys.executable, "normalize.py"],
+        input="wip: add something\n",
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert proc.returncode == 0
+    assert "warning" in proc.stderr.lower()
+    assert "wip" in proc.stderr
+
+
+def test_unknown_type_does_not_alter_message():
+    msg = "wip: Add something"
+    result = normalize(msg)
+    # Type is preserved as-is; warning is side-effect only
+    assert result.startswith("wip: Add something")
+
+
+def test_known_type_emits_no_warning():
+    proc = subprocess.run(
+        [sys.executable, "normalize.py"],
+        input="feat: add something\n",
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert proc.returncode == 0
+    assert proc.stderr == ""

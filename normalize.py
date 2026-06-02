@@ -12,6 +12,17 @@ CONVENTIONAL_SUBJECT_RE = re.compile(
     r"^(?P<type>[a-z]+)(?:\((?P<scope>[^)]*)\))?(?P<breaking>!)?:\s*(?P<desc>.+)$"
 )
 
+VALID_TYPES = {
+    "feat", "fix", "docs", "style", "refactor", "perf",
+    "test", "build", "ci", "chore", "revert",
+}
+
+
+def _strip_comments(msg: str) -> str:
+    """Remove lines starting with '#' (git verbose/annotated comment lines)."""
+    lines = [line for line in msg.splitlines() if not line.startswith("#")]
+    return "\n".join(lines)
+
 
 def _wrap_body(text: str) -> str:
     """Wrap body text at 72 chars, preserving paragraph structure."""
@@ -51,6 +62,13 @@ def _normalize_subject(subject: str) -> str:
         breaking = m.group("breaking") or ""
         desc = m.group("desc").strip()
 
+        if type_ not in VALID_TYPES:
+            print(
+                f"warning: unrecognized conventional commit type '{type_}'; "
+                f"expected one of: {', '.join(sorted(VALID_TYPES))}",
+                file=sys.stderr,
+            )
+
         # Capitalize first word of description
         if desc:
             desc = desc[0].upper() + desc[1:]
@@ -82,12 +100,14 @@ def normalize(msg: str) -> str:
     """Normalize a commit message to conventional-commits style.
 
     Rules applied:
+    - Git comment lines (starting with '#') are stripped before processing.
     - Subject first word capitalized.
     - No trailing period on subject.
     - Subject trimmed to 72 chars at a word boundary.
     - Blank line between subject and body enforced.
     - Body lines wrapped at 72 chars.
     """
+    msg = _strip_comments(msg)
     msg = msg.strip()
     if not msg:
         return msg
@@ -117,16 +137,47 @@ def normalize(msg: str) -> str:
 
 def main() -> None:
     """CLI entry point: reads from a file path arg (git hook) or stdin."""
-    if len(sys.argv) >= 2:
-        path = sys.argv[1]
+    import difflib
+
+    args = sys.argv[1:]
+    check_mode = "--check" in args
+    file_args = [a for a in args if a != "--check"]
+
+    if file_args:
+        path = file_args[0]
         with open(path, encoding="utf-8") as fh:
             msg = fh.read()
         normalized = normalize(msg)
+        if check_mode:
+            # Already normalized means normalize() produces no change to the
+            # meaningful content (ignoring a single trailing newline).
+            if normalized == msg.rstrip("\n") or normalized + "\n" == msg:
+                sys.exit(0)
+            diff = difflib.unified_diff(
+                msg.splitlines(keepends=True),
+                (normalized + "\n").splitlines(keepends=True),
+                fromfile="original",
+                tofile="normalized",
+            )
+            sys.stdout.writelines(diff)
+            sys.exit(1)
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(normalized)
     else:
         msg = sys.stdin.read()
-        sys.stdout.write(normalize(msg))
+        normalized = normalize(msg)
+        if check_mode:
+            if normalized == msg.rstrip("\n") or normalized + "\n" == msg:
+                sys.exit(0)
+            diff = difflib.unified_diff(
+                msg.splitlines(keepends=True),
+                (normalized + "\n").splitlines(keepends=True),
+                fromfile="original",
+                tofile="normalized",
+            )
+            sys.stdout.writelines(diff)
+            sys.exit(1)
+        sys.stdout.write(normalized)
 
 
 if __name__ == "__main__":
