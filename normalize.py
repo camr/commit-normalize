@@ -12,26 +12,38 @@ CONVENTIONAL_SUBJECT_RE = re.compile(
     r"^(?P<type>[a-z]+)(?:\((?P<scope>[^)]*)\))?(?P<breaking>!)?:\s*(?P<desc>.+)$"
 )
 
+# RFC-style git trailers: "Token: value" or "BREAKING CHANGE: value"
+TRAILER_RE = re.compile(r"^(?:[A-Za-z][A-Za-z0-9-]*|BREAKING CHANGE):\s+\S")
+
+
+def _is_trailer(line: str) -> bool:
+    return bool(TRAILER_RE.match(line.strip()))
+
 
 def _wrap_body(text: str) -> str:
-    """Wrap body text at 72 chars, preserving paragraph structure."""
+    """Wrap body text at 72 chars, preserving paragraph structure and git trailers."""
     result_lines = []
     current_block: list[str] = []
+
+    def flush_block() -> None:
+        if current_block:
+            wrapped = textwrap.fill(" ".join(current_block), MAX_LINE)
+            result_lines.extend(wrapped.splitlines())
+            current_block.clear()
 
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
-            if current_block:
-                wrapped = textwrap.fill(" ".join(current_block), MAX_LINE)
-                result_lines.extend(wrapped.splitlines())
-                current_block = []
+            flush_block()
             result_lines.append("")
+        elif _is_trailer(stripped):
+            # Trailers are emitted verbatim — never merged into prose
+            flush_block()
+            result_lines.append(stripped)
         else:
             current_block.append(stripped)
 
-    if current_block:
-        wrapped = textwrap.fill(" ".join(current_block), MAX_LINE)
-        result_lines.extend(wrapped.splitlines())
+    flush_block()
 
     # Remove trailing blank lines added by the loop
     while result_lines and not result_lines[-1]:
@@ -82,13 +94,18 @@ def normalize(msg: str) -> str:
     """Normalize a commit message to conventional-commits style.
 
     Rules applied:
+    - Git comment lines (starting with '#') are stripped before processing.
     - Subject first word capitalized.
     - No trailing period on subject.
     - Subject trimmed to 72 chars at a word boundary.
     - Blank line between subject and body enforced.
     - Body lines wrapped at 72 chars.
+    - Git trailers (Token: value) are preserved verbatim without reflowing.
     """
-    msg = msg.strip()
+    # Strip git-appended comment lines before any other processing
+    lines_no_comments = [l for l in msg.splitlines() if not l.startswith("#")]
+    msg = "\n".join(lines_no_comments).strip()
+
     if not msg:
         return msg
 
@@ -117,16 +134,45 @@ def normalize(msg: str) -> str:
 
 def main() -> None:
     """CLI entry point: reads from a file path arg (git hook) or stdin."""
-    if len(sys.argv) >= 2:
-        path = sys.argv[1]
+    check_mode = "--check" in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--check"]
+
+    if args:
+        path = args[0]
         with open(path, encoding="utf-8") as fh:
             msg = fh.read()
         normalized = normalize(msg)
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(normalized)
+        if check_mode:
+            if normalized != msg.strip() and normalized != msg:
+                # Show a minimal diff-style report
+                sys.stdout.write("--- original\n+++ normalized\n")
+                orig_lines = msg.splitlines()
+                norm_lines = normalized.splitlines()
+                for line in orig_lines:
+                    sys.stdout.write(f"-{line}\n")
+                sys.stdout.write("\n")
+                for line in norm_lines:
+                    sys.stdout.write(f"+{line}\n")
+                sys.exit(1)
+        else:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(normalized)
     else:
         msg = sys.stdin.read()
-        sys.stdout.write(normalize(msg))
+        if check_mode:
+            normalized = normalize(msg)
+            if normalized != msg.strip() and normalized != msg:
+                sys.stdout.write("--- original\n+++ normalized\n")
+                orig_lines = msg.splitlines()
+                norm_lines = normalized.splitlines()
+                for line in orig_lines:
+                    sys.stdout.write(f"-{line}\n")
+                sys.stdout.write("\n")
+                for line in norm_lines:
+                    sys.stdout.write(f"+{line}\n")
+                sys.exit(1)
+        else:
+            sys.stdout.write(normalize(msg))
 
 
 if __name__ == "__main__":

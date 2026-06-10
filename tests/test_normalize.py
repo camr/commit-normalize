@@ -197,3 +197,177 @@ def test_cli_stdin_mode():
     )
     assert proc.returncode == 0
     assert proc.stdout.startswith("feat: Add gadget")
+
+
+# ---------------------------------------------------------------------------
+# Comment stripping
+# ---------------------------------------------------------------------------
+
+def test_comment_lines_stripped():
+    msg = (
+        "feat: add feature\n"
+        "\n"
+        "# Please enter the commit message for your changes.\n"
+        "# Changes to be committed:\n"
+        "#   modified: foo.py\n"
+    )
+    result = normalize(msg)
+    assert "#" not in result
+    assert result == "feat: Add feature"
+
+
+def test_comment_lines_stripped_with_body():
+    msg = (
+        "fix: resolve issue\n"
+        "\n"
+        "Detailed explanation here.\n"
+        "\n"
+        "# On branch main\n"
+        "# Changes to be committed:\n"
+    )
+    result = normalize(msg)
+    assert "#" not in result
+    assert "Detailed explanation here." in result
+
+
+def test_comment_only_message_returns_empty():
+    msg = "# Please enter the commit message\n# Changes:\n#  foo\n"
+    result = normalize(msg)
+    assert result == ""
+
+
+def test_inline_hash_in_body_not_stripped():
+    # '#' not at line start should be preserved
+    msg = "feat: Add feature\n\nSee issue #123 for details."
+    result = normalize(msg)
+    assert "#123" in result
+
+
+# ---------------------------------------------------------------------------
+# --check mode
+# ---------------------------------------------------------------------------
+
+def test_check_mode_exits_zero_when_already_normalized(tmp_path):
+    commit_file = tmp_path / "COMMIT_EDITMSG"
+    commit_file.write_text("feat: Add widget")
+    proc = subprocess.run(
+        [sys.executable, "normalize.py", "--check", str(commit_file)],
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert proc.returncode == 0
+
+
+def test_check_mode_exits_one_when_changes_needed(tmp_path):
+    commit_file = tmp_path / "COMMIT_EDITMSG"
+    original = "feat: add widget.\n"
+    commit_file.write_text(original)
+    proc = subprocess.run(
+        [sys.executable, "normalize.py", "--check", str(commit_file)],
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert proc.returncode == 1
+    # File must not be modified
+    assert commit_file.read_text() == original
+
+
+def test_check_mode_does_not_modify_file(tmp_path):
+    commit_file = tmp_path / "COMMIT_EDITMSG"
+    original = "feat: add widget.\n"
+    commit_file.write_text(original)
+    subprocess.run(
+        [sys.executable, "normalize.py", "--check", str(commit_file)],
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert commit_file.read_text() == original
+
+
+def test_check_mode_stdin_exits_zero_when_normalized():
+    proc = subprocess.run(
+        [sys.executable, "normalize.py", "--check"],
+        input="feat: Add widget",
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert proc.returncode == 0
+
+
+def test_check_mode_stdin_exits_one_when_changes_needed():
+    proc = subprocess.run(
+        [sys.executable, "normalize.py", "--check"],
+        input="feat: add widget.\n",
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert proc.returncode == 1
+
+
+# ---------------------------------------------------------------------------
+# Git trailer preservation
+# ---------------------------------------------------------------------------
+
+def test_trailer_co_authored_by_preserved():
+    msg = (
+        "feat: Add feature\n"
+        "\n"
+        "Implement the new thing.\n"
+        "\n"
+        "Co-authored-by: Jane Doe <jane@example.com>\n"
+    )
+    result = normalize(msg)
+    assert "Co-authored-by: Jane Doe <jane@example.com>" in result
+
+
+def test_trailer_not_reflowed_into_prose():
+    msg = (
+        "fix: Resolve bug\n"
+        "\n"
+        "Long prose body that explains the fix in detail.\n"
+        "Co-authored-by: Jane Doe <jane@example.com>\n"
+    )
+    result = normalize(msg)
+    lines = result.splitlines()
+    trailer_lines = [l for l in lines if l.startswith("Co-authored-by:")]
+    assert len(trailer_lines) == 1
+    assert trailer_lines[0] == "Co-authored-by: Jane Doe <jane@example.com>"
+
+
+def test_trailer_fixes_preserved():
+    msg = "fix: Resolve issue\n\nSome explanation.\n\nFixes: #123\n"
+    result = normalize(msg)
+    assert "Fixes: #123" in result
+
+
+def test_multiple_trailers_preserved():
+    msg = (
+        "feat: Add oauth\n"
+        "\n"
+        "Adds OAuth2 support.\n"
+        "\n"
+        "Co-authored-by: Alice <alice@example.com>\n"
+        "Reviewed-by: Bob <bob@example.com>\n"
+        "Fixes: #42\n"
+    )
+    result = normalize(msg)
+    assert "Co-authored-by: Alice <alice@example.com>" in result
+    assert "Reviewed-by: Bob <bob@example.com>" in result
+    assert "Fixes: #42" in result
+
+
+def test_breaking_change_trailer_preserved():
+    msg = (
+        "feat!: Remove legacy endpoint\n"
+        "\n"
+        "Drops /v1/users entirely.\n"
+        "\n"
+        "BREAKING CHANGE: /v1/users is removed, use /v2/users\n"
+    )
+    result = normalize(msg)
+    assert "BREAKING CHANGE: /v1/users is removed, use /v2/users" in result
